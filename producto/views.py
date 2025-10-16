@@ -1,20 +1,34 @@
 from django.shortcuts import render, redirect,get_object_or_404
 from .models import Productos
 from .forms import ProductoForm
+from django.db.models import Q
+from django.core.paginator import Paginator
 # Libreria para usar xhtml2pdf
 from django.template.loader import get_template
 from django.core.mail import EmailMessage
 from django.http import HttpResponse
 from io import BytesIO
 from xhtml2pdf import pisa
+from django.http import JsonResponse
 # Create your views here.
 
 
 # Crear el index
 def lista_producto(request):
-    producto = Productos.objects.all()
+    query = request.GET.get("q")
+    producto = Productos.objects.all().order_by('id')
+    if query:
+        producto = producto.filter(
+        Q(nombre__icontains=query) |
+        Q(price__icontains=query) |
+        Q(disponible__icontains=query)
+    )
+    paginator = Paginator(producto, 5)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
     context = {
-        'producto': producto
+        'page_obj': page_obj,
+        "query":query
     }
     return render(request, 'listado.html', context)
 
@@ -46,6 +60,10 @@ def eliminar_producto(request, id):
     producto = get_object_or_404(Productos, id=id)
     if request.method == 'POST':
         producto.delete()
+        # 🔹 Si la petición viene de AJAX, devolvemos JSON
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({'mensaje': 'Producto eliminado correctamente'})
+        # 🔹 Si no, redirige normalmente
         return redirect('lista_producto')
     return render(request, 'eliminar_producto.html', {'producto': producto})
 
